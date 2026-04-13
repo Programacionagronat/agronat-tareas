@@ -232,6 +232,11 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); min-
         <span class="filter-chip" data-f="hecha" onclick="setFilter('hecha',this)">Hechas</span>
         <span class="filter-chip" data-f="Civil" onclick="setFilter('Civil',this)">Civil</span>
         <span class="filter-chip" data-f="Montaje" onclick="setFilter('Montaje',this)">Montaje</span>
+        <span class="filter-chip" data-f="Mantenimiento" onclick="setFilter('Mantenimiento',this)">Mantenimiento</span>
+        <span class="filter-chip" data-f="Eléctrica" onclick="setFilter('Eléctrica',this)">Eléctrica</span>
+        <span class="filter-chip" data-f="Agronat" onclick="setFilter('Agronat',this)">Agronat</span>
+        <span class="filter-chip" data-f="Inelaxa" onclick="setFilter('Inelaxa',this)">Inelaxa</span>
+        <span class="filter-chip" data-f="Zetas" onclick="setFilter('Zetas',this)">Zetas</span>
       </div>
       <div class="task-list" id="g-tareas-list"></div>
     </div>
@@ -302,6 +307,8 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); min-
           <select class="form-select" id="t-cat">
             <option value="Civil">Civil</option>
             <option value="Montaje">Montaje</option>
+            <option value="Mantenimiento">Mantenimiento</option>
+            <option value="Eléctrica">Eléctrica</option>
           </select>
         </div>
         <div class="field-row">
@@ -312,9 +319,21 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); min-
       <div class="field-row">
         <label>Asignado a</label>
         <select class="form-select" id="t-asig">
-          <option value="subcontrato">Subcontrato (Acodike)</option>
-          <option value="joaquin">Joaquín</option>
           <option value="todos">Todos</option>
+          <option value="federico">Federico</option>
+          <option value="joaquin">Joaquín</option>
+          <option value="nito">Nito</option>
+          <option value="pablo">Pablo</option>
+          <option value="marcelo">Marcelo</option>
+          <option value="flavio">Flavio</option>
+        </select>
+      </div>
+      <div class="field-row">
+        <label>Empresa responsable</label>
+        <select class="form-select" id="t-empresa">
+          <option value="Agronat">Agronat</option>
+          <option value="Inelaxa">Inelaxa</option>
+          <option value="Zetas">Zetas</option>
         </select>
       </div>
       <div class="field-row">
@@ -364,10 +383,12 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); min-
 // ============ USUARIOS ============
 // Para cambiar: editá los valores de pass
 const USERS = {
-  'federico':    { pass: 'agronat2024', rol: 'gestor',      nombre: 'Federico',           asig: 'todos' },
-  'joaquin':     { pass: 'joa2024',     rol: 'supervisor',  nombre: 'Joaquín',            asig: 'joaquin' },
-  'subcontrato': { pass: 'obra2024',    rol: 'operario',    nombre: 'Subcontrato',        asig: 'subcontrato' },
-  'acodike':     { pass: 'acodike24',   rol: 'operario',    nombre: 'Acodike',            asig: 'subcontrato' },
+  'federico': { pass: 'agronat2024', rol: 'gestor',    nombre: 'Federico', empresa: 'Agronat', asig: 'todos' },
+  'joaquin':  { pass: 'joa2024',     rol: 'empresa',   nombre: 'Joaquín',  empresa: 'Agronat', asig: 'todos' },
+  'nito':     { pass: 'nito2024',    rol: 'empresa',   nombre: 'Nito',     empresa: 'Agronat', asig: 'todos' },
+  'pablo':    { pass: 'pablo2024',   rol: 'empresa',   nombre: 'Pablo',    empresa: 'Agronat', asig: 'todos' },
+  'marcelo':  { pass: 'marcelo2024', rol: 'empresa',   nombre: 'Marcelo',  empresa: 'Agronat', asig: 'todos' },
+  'flavio':   { pass: 'inelaxa2024', rol: 'operario',  nombre: 'Flavio',   empresa: 'Inelaxa', asig: 'flavio' },
 };
 
 // ============ GOOGLE SHEETS ============
@@ -466,7 +487,8 @@ function dateBadge(t){
 }
 function catBadge(c){ return c==='Civil'?'<span class="badge b-civil">Civil</span>':'<span class="badge b-montaje">Montaje</span>'; }
 function estadoBadge(e){ return {pendiente:'<span class="badge b-pendiente">Pendiente</span>','en curso':'<span class="badge b-en-curso">En curso</span>',hecha:'<span class="badge b-hecha">✓ Hecha</span>'}[e]||''; }
-function asigNombre(a){ return {subcontrato:'Subcontrato',joaquin:'Joaquín',todos:'Todos'}[a]||a; }
+function asigNombre(a){ return {todos:'Todos',federico:'Federico',joaquin:'Joaquín',nito:'Nito',pablo:'Pablo',marcelo:'Marcelo',flavio:'Flavio'}[a]||a; }
+function empresaBadge(e){ const cols={Agronat:'#1e5fa8',Inelaxa:'#c77b3a',Zetas:'#276749'}; const c=cols[e]||'#888'; return `<span class="badge" style="background:${c}20;color:${c};border:1px solid ${c}40;">${e||''}</span>`; }
 
 // ============ LOGIN / LOGOUT ============
 let sesion = null;
@@ -479,9 +501,9 @@ function doLogin(){
   document.getElementById('login-err').style.display='none';
   sesion={...user, usuario:u};
   document.getElementById('login-wrap').classList.add('hidden');
-  if(sesion.rol==='gestor'||sesion.rol==='supervisor'){
+  if(sesion.rol==='gestor'||sesion.rol==='empresa'){
     document.getElementById('shell-gestor').classList.add('visible');
-    document.getElementById('g-username').innerHTML=sesion.nombre+'<span class="user-role">'+(sesion.rol==='gestor'?'Gestor':'Supervisor')+'</span>';
+    document.getElementById('g-username').innerHTML=sesion.nombre+' · '+sesion.empresa+'<span class="user-role">'+(sesion.rol==='gestor'?'Gestor':'Empresa')+'</span>';
     cargarTareas().then(()=>renderGestor());
   } else {
     document.getElementById('shell-op').classList.add('visible');
@@ -557,9 +579,12 @@ function setFilter(f,el){
 }
 
 function renderTareas(){
+  const cats=['Civil','Montaje','Mantenimiento','Eléctrica'];
+  const emps=['Agronat','Inelaxa','Zetas'];
   let list=tareas;
   if(curFilter==='todas') list=tareas;
-  else if(curFilter==='Civil'||curFilter==='Montaje') list=tareas.filter(t=>t.cat===curFilter);
+  else if(cats.includes(curFilter)) list=tareas.filter(t=>t.cat===curFilter);
+  else if(emps.includes(curFilter)) list=tareas.filter(t=>t.empresa===curFilter);
   else list=tareas.filter(t=>t.estado===curFilter);
   list=[...list].sort((a,b)=>{
     const ord={pendiente:0,'en curso':1,hecha:2};
@@ -592,6 +617,7 @@ function buildCard(t, vista){
         <div class="task-desc ${done?'done':''}">${t.desc}</div>
         <div class="task-meta">
           ${catBadge(t.cat)}
+          ${t.empresa?empresaBadge(t.empresa):''}
           ${estadoBadge(t.estado)}
           ${dateBadge(t)}
           <span class="badge" style="background:var(--surface2);color:var(--muted);border:1px solid var(--border);">👷 ${asigNombre(t.asig)}</span>
@@ -661,6 +687,7 @@ function editarTarea(id){
   document.getElementById('t-cat').value=t.cat;
   document.getElementById('t-fecha').value=t.fecha||'';
   document.getElementById('t-asig').value=t.asig;
+  document.getElementById('t-empresa').value=t.empresa||'Agronat';
   document.getElementById('t-notas').value=t.notas||'';
   document.getElementById('t-edit-id').value=id;
   om('m-tarea');
@@ -673,6 +700,7 @@ async function saveTarea(){
     desc, cat:document.getElementById('t-cat').value,
     fecha:document.getElementById('t-fecha').value,
     asig:document.getElementById('t-asig').value,
+    empresa:document.getElementById('t-empresa').value,
     notas:document.getElementById('t-notas').value.trim(),
   };
   cm('m-tarea');
@@ -796,7 +824,7 @@ function renderGantt(){
 
 // ============ OPERARIO ============
 function renderOperario(){
-  const mias=tareas.filter(t=>t.asig===sesion.asig||t.asig==='todos');
+  const mias=tareas.filter(t=>sesion.asig==='todos'||t.asig===sesion.usuario||t.asig==='todos');
   const urg=mias.filter(t=>t.estado!=='hecha'&&t.fecha&&dF(t.fecha)<=0);
   const pend=mias.filter(t=>t.estado!=='hecha'&&!(t.fecha&&dF(t.fecha)<=0));
   const hechas=mias.filter(t=>t.estado==='hecha');
