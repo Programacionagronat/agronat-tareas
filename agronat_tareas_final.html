@@ -148,6 +148,8 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); min-
 
 /* EMPTY */
 .empty { text-align: center; padding: 40px 20px; color: var(--muted); font-size: 14px; }
+.zoom-btn { font-size: 12px; padding: 5px 12px; border-radius: 6px; border: 0.5px solid var(--border); background: var(--surface); color: var(--muted); cursor: pointer; font-family: var(--font); transition: all .15s; }
+.zoom-btn.active, .zoom-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
 .empty-icon { font-size: 32px; margin-bottom: 10px; }
 
 /* OPERARIO VIEW */
@@ -204,6 +206,7 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); min-
     <div class="tabs">
       <div class="tab active" onclick="gTab('dashboard')">Dashboard</div>
       <div class="tab" onclick="gTab('tareas')">Tareas</div>
+      <div class="tab" onclick="gTab('gantt')">Gantt</div>
     </div>
 
     <!-- DASHBOARD -->
@@ -232,6 +235,28 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); min-
       </div>
       <div class="task-list" id="g-tareas-list"></div>
     </div>
+
+    <!-- GANTT -->
+    <div class="tpage" id="gt-gantt">
+      <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center;">
+        <button onclick="setZoom(1)" id="z1" class="zoom-btn active">2 semanas</button>
+        <button onclick="setZoom(2)" id="z2" class="zoom-btn">1 mes</button>
+        <button onclick="setZoom(3)" id="z3" class="zoom-btn">2 meses</button>
+        <span style="font-size:12px;color:var(--muted);margin-left:6px;">Hoy: <strong id="gantt-hoy"></strong></span>
+      </div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:14px;">
+        <span style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);"><span style="width:10px;height:10px;border-radius:2px;background:#1e5fa8;display:inline-block;"></span>Civil</span>
+        <span style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);"><span style="width:10px;height:10px;border-radius:2px;background:#c77b3a;display:inline-block;"></span>Montaje</span>
+        <span style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);"><span style="width:10px;height:10px;border-radius:2px;background:#888;display:inline-block;"></span>Pendiente</span>
+        <span style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);"><span style="width:10px;height:10px;border-radius:2px;background:#276749;display:inline-block;"></span>Hecha</span>
+        <span style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);"><span style="width:10px;height:10px;border-radius:2px;background:#c0392b;display:inline-block;"></span>Vencida</span>
+      </div>
+      <div style="overflow-x:auto;border:1px solid var(--border);border-radius:10px;background:var(--surface);">
+        <table id="gantt-table" style="border-collapse:collapse;min-width:100%;"></table>
+      </div>
+      <div id="gantt-empty" style="display:none;text-align:center;padding:40px;color:var(--muted);">No hay tareas con fecha asignada para mostrar en el Gantt.</div>
+    </div>
+
   </div>
 </div>
 
@@ -488,12 +513,13 @@ function gTab(t){
   gCurTab=t;
   document.querySelectorAll('.tpage').forEach(x=>x.classList.remove('active'));
   document.getElementById('gt-'+t).classList.add('active');
-  document.querySelectorAll('.tab').forEach((x,i)=>x.classList[i===(['dashboard','tareas'].indexOf(t))?'add':'remove']('active'));
+  document.querySelectorAll('.tab').forEach((x,i)=>x.classList[i===['dashboard','tareas','gantt'].indexOf(t)?'add':'remove']('active'));
   renderGestor();
 }
 
 function renderGestor(){
   if(gCurTab==='dashboard') renderDash();
+  else if(gCurTab==='gantt') renderGantt();
   else renderTareas();
 }
 
@@ -666,6 +692,106 @@ async function saveTarea(){
   }
   hideLoading();
   renderGestor();
+}
+
+
+// ============ GANTT ============
+let zoomDays = 14;
+
+function setZoom(n){
+  document.querySelectorAll('.zoom-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('z'+n).classList.add('active');
+  zoomDays={1:14,2:30,3:60}[n];
+  renderGantt();
+}
+
+function addDays(d,n){ const r=new Date(d); r.setDate(r.getDate()+n); return r; }
+function diffDays(a,b){ return Math.round((b-a)/86400000); }
+
+function renderGantt(){
+  const hoyD = new Date(); hoyD.setHours(0,0,0,0);
+  if(document.getElementById('gantt-hoy'))
+    document.getElementById('gantt-hoy').textContent = hoyD.toLocaleDateString('es-UY',{day:'2-digit',month:'2-digit'});
+
+  const conFecha = tareas.filter(t=>t.fecha&&t.fecha!=='');
+  const ganttEl = document.getElementById('gantt-table');
+  const emptyEl = document.getElementById('gantt-empty');
+  if(!ganttEl) return;
+
+  if(!conFecha.length){
+    ganttEl.style.display='none';
+    if(emptyEl) emptyEl.style.display='block';
+    return;
+  }
+  if(emptyEl) emptyEl.style.display='none';
+  ganttEl.style.display='';
+
+  const startDate = addDays(hoyD, -3);
+  const days = zoomDays;
+  const cellW = Math.max(22, Math.floor(Math.min(window.innerWidth-240, 700) / days));
+
+  let html = '<thead><tr>';
+  html += '<th style="text-align:left;padding:8px 10px;font-size:11px;color:var(--muted);font-weight:500;border-bottom:1px solid var(--border);min-width:180px;max-width:180px;width:180px;">Tarea</th>';
+  for(let i=0;i<days;i++){
+    const d=addDays(startDate,i);
+    const isToday=diffDays(hoyD,d)===0;
+    const isWknd=d.getDay()===0||d.getDay()===6;
+    const showLbl=days<=14?true:days<=30?i%3===0:i%7===0;
+    const lbl=showLbl?d.toLocaleDateString('es-UY',{day:'2-digit',month:'2-digit'}):'';
+    html+=`<th style="width:${cellW}px;min-width:${cellW}px;text-align:center;padding:4px 0;font-size:10px;font-weight:400;color:${isToday?'#1e5fa8':'var(--muted)'};border-bottom:1px solid var(--border);${isWknd?'background:var(--surface2)':''}">${lbl}</th>`;
+  }
+  html+='</tr></thead><tbody>';
+
+  conFecha.forEach(t=>{
+    const tEnd = new Date(t.fecha); tEnd.setHours(0,0,0,0);
+    // estimate start: 3 days before end if no start info
+    const tStart = addDays(t.fecha, -3);
+    const isVencida = t.estado!=='hecha' && diffDays(hoyD,tEnd)<0;
+    const barCol = isVencida?'#c0392b':
+                   t.estado==='hecha'?'#276749':
+                   t.estado==='en curso'?(t.cat==='Civil'?'#1e5fa8':'#c77b3a'):
+                   '#b4b2a9';
+    const catColor = t.cat==='Civil'?'#1e5fa8':'#c77b3a';
+    const asigLabel = {subcontrato:'Subcontrato',joaquin:'Joaquín',todos:'Todos'}[t.asig]||t.asig;
+
+    html+=`<tr style="border-bottom:1px solid var(--border);">`;
+    html+=`<td style="padding:6px 10px;min-width:180px;max-width:180px;width:180px;vertical-align:middle;">
+      <div style="display:flex;align-items:center;gap:5px;">
+        <span style="width:6px;height:6px;border-radius:50%;background:${catColor};flex-shrink:0;"></span>
+        <div>
+          <div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:155px;">${t.desc.length>22?t.desc.slice(0,21)+'…':t.desc}</div>
+          <div style="font-size:10px;color:var(--muted);">${asigLabel}</div>
+        </div>
+      </div>
+    </td>`;
+
+    for(let i=0;i<days;i++){
+      const d=addDays(startDate,i);
+      const isToday=diffDays(hoyD,d)===0;
+      const isWknd=d.getDay()===0||d.getDay()===6;
+      const dayDiff=diffDays(startDate,d);
+      const barStartDiff=diffDays(startDate,tStart);
+      const barEndDiff=diffDays(startDate,tEnd);
+      const inRange=dayDiff>=barStartDiff&&dayDiff<=barEndDiff;
+      const isFirst=dayDiff===barStartDiff;
+      const isLast=dayDiff===barEndDiff;
+      const br=isFirst&&isLast?'border-radius:4px':isFirst?'border-radius:4px 0 0 4px':isLast?'border-radius:0 4px 4px 0':'border-radius:0';
+
+      html+=`<td style="width:${cellW}px;min-width:${cellW}px;padding:0;position:relative;height:36px;${isWknd?'background:var(--surface2)':''};${isToday?'background:rgba(30,95,168,0.06)':''}">`;
+      if(inRange){
+        html+=`<div style="position:absolute;top:50%;transform:translateY(-50%);left:1px;right:1px;height:16px;background:${barCol};${br};opacity:${t.estado==='pendiente'?'0.5':'0.85'};"></div>`;
+        if(isFirst&&t.desc){
+          html+=`<div style="position:absolute;top:50%;transform:translateY(-50%);left:4px;right:2px;font-size:9px;font-weight:500;color:${t.estado==='pendiente'?'#5F5E5A':'#fff'};white-space:nowrap;overflow:hidden;pointer-events:none;z-index:1;">${t.estado==='hecha'?'✓':t.estado==='en curso'?'En curso':''}</div>`;
+        }
+      }
+      if(isToday) html+=`<div style="position:absolute;top:0;bottom:0;left:50%;width:2px;background:#1e5fa8;opacity:0.5;z-index:2;margin-left:-1px;"></div>`;
+      html+=`</td>`;
+    }
+    html+='</tr>';
+  });
+
+  html+='</tbody>';
+  ganttEl.innerHTML=html;
 }
 
 // ============ OPERARIO ============
